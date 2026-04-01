@@ -18,8 +18,8 @@ bedrooms = st.number_input("Bedrooms", 0)
 location = st.selectbox("Select Location", location_list)
 
 amenities_score = st.number_input("Amenities Score", 0)
-project_count = st.number_input("Nearby Projects Count", 0)
-news_sentiment = st.number_input("News Sentiment (-1 to 1)", 0.0)
+project_count = st.number_input("Projects Count", 0)
+news_sentiment = st.number_input("News Sentiment", min_value=-1.0, max_value=1.0, value=0.0)
 
 if st.button("Predict Price"):
 
@@ -59,6 +59,6 @@ if st.button("Predict Price"):
     except:
         top_features = ["area", "location", "amenities_score"]
 
-    st.success(f"Predicted Price: ₹ {int(prediction)}")
+    st.success(f"Predicted Price: Rs. {int(prediction)}")
     st.info(f"Confidence Score: {round(confidence, 2)}")
     st.write("Top Influencing Factors:", top_features)
