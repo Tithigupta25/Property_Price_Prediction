@@ -1,78 +1,64 @@
-from fastapi import FastAPI
+import streamlit as st
 import pandas as pd
 import joblib
 
 model = joblib.load("pkl/model.pkl")
 le = joblib.load("pkl/encoder.pkl")
 avg_error = joblib.load("pkl/avg_error.pkl")
-feature = joblib.load("pkl/features.pkl")
+features = joblib.load("pkl/features.pkl")
+location_list = list(le.classes_)
 
-app = FastAPI()
+st.set_page_config(page_title="Property Price Predictor")
 
-@app.get("/")
-def home():
-    return {  "message": "Property Price Prediction API 🚀",
-        "required_features": [
-            "area",
-            "bedrooms",
-            "location",
-            "amenities_score",
-            "project_count",
-            "news_sentiment"
-        ],
-        "note": "Send POST request to /predict with above features"
+st.title("Property Price Prediction")
+st.write("Enter property details to estimate price")
+
+area = st.number_input("Area (sqft)", 0)
+bedrooms = st.number_input("Bedrooms", 0)
+location = st.selectbox("Select Location", location_list)
+
+amenities_score = st.number_input("Amenities Score", 0)
+project_count = st.number_input("Nearby Projects Count", 0)
+news_sentiment = st.number_input("News Sentiment (-1 to 1)", 0.0)
+
+if st.button("Predict Price"):
+
+    input_dict = {
+        "area": area,
+        "bedrooms": bedrooms,
+        "location": location.strip(),
+        "amenities_score": amenities_score,
+        "project_count": project_count,
+        "news_sentiment": news_sentiment
     }
 
-@app.post("/predict")
-def predict(data: dict):
+    input_df = pd.DataFrame([input_dict])
+
     try:
-        input_dict = {
-            "area": data.get("area", 0),
-            "location": data.get("location", ""),
-            "bedrooms": data.get("bedrooms", 0),
-            "amenities_score": data.get("amenities_score", 0),
-            "project_count": data.get("project_count", 0),
-            "news_sentiment": data.get("news_sentiment", 0)
-        }
+        input_df["location"] = le.transform([input_df.loc[0, "location"]])[0]
+    except:
+        st.warning("Unknown location — using default encoding")
+        input_df["location"] = 0
 
-        input_data = pd.DataFrame([input_dict])
+    input_df = input_df.reindex(columns=features, fill_value=0)
+    input_df = input_df.astype(float)
 
-        input_data["location"] = input_data["location"].astype(str).str.strip()
+    prediction = model.predict(input_df)[0]
 
-        try:
-            encoded_val = le.transform([input_data.loc[0, "location"]])[0]
-        except:
-            encoded_val = 0
+    if prediction != 0:
+        confidence = 1 / (1 + (avg_error / prediction))
+    else:
+        confidence = 0
 
-        input_data.loc[0, "location"] = int(encoded_val)
+    confidence = max(0, min(confidence, 1))
 
-        input_data = input_data.reindex(columns=feature, fill_value=0)
-        input_data = input_data.astype(float)
-        prediction = model.predict(input_data)[0]
+    try:
+        importances = model.feature_importances_
+        feature_importance = pd.Series(importances, index=features)
+        top_features = feature_importance.sort_values(ascending=False).head(3).index.tolist()
+    except:
+        top_features = ["area", "location", "amenities_score"]
 
-        if prediction != 0:
-            confidence = 1 / (1 + (avg_error / prediction))
-        else:
-            confidence = 0
-
-        confidence = max(0, min(confidence, 1))
-
-        try:
-            importances = model.feature_importances_
-            feature_importance = pd.Series(importances, index=feature)
-            top_feature = (feature_importance.sort_values(ascending=False).head(3).index.tolist())
-            
-        except:
-            top_feature = ["area", "location", "amenities_score"]
-
-        return {
-            "predicted_price": int(prediction),
-            "confidence_score": round(confidence, 2),
-            "top_factors": top_feature
-        }
-
-    except Exception as e:
-        return {
-            "error": str(e),
-            "message": "Something went wrong"
-        }
+    st.success(f"Predicted Price: ₹ {int(prediction)}")
+    st.info(f"Confidence Score: {round(confidence, 2)}")
+    st.write("Top Influencing Factors:", top_features)
